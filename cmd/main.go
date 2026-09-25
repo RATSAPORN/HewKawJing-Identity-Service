@@ -4,10 +4,12 @@ import (
 	"context"
 	"identityService/configs"
 	"identityService/controller"
+	"identityService/grpcserver"
 	"identityService/repositories"
 	"identityService/routes"
 	"identityService/services"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -30,7 +32,8 @@ func main() {
 	defer db.Close()
 
 	appEnv := os.Getenv("APP_ENV")
-	if appEnv == "dev" || appEnv == "local" || appEnv == "sit" {
+	nonProduction := appEnv == "dev" || appEnv == "local" || appEnv == "sit"
+	if nonProduction {
 		mode := "up"
 		steps := 1
 		if len(os.Args) >= 2 {
@@ -53,6 +56,22 @@ func main() {
 	identityService := services.NewIdentityService(identityRepo)
 
 	identityController := controller.NewIdentityController(identityService)
+
+	grpcPort := os.Getenv("GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "9090"
+	}
+	grpcListener, err := net.Listen("tcp", ":"+grpcPort)
+	if err != nil {
+		log.Fatalf("Cannot listen for gRPC on port %s: %v", grpcPort, err)
+	}
+	grpcServer := grpcserver.NewServer(identityService, nonProduction)
+	go func() {
+		log.Printf("gRPC server listening on :%s", grpcPort)
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	r := gin.Default()
 	r.GET("/health", func(ctx *gin.Context) {

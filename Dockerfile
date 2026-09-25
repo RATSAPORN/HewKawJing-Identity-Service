@@ -15,9 +15,9 @@ WORKDIR /app
 COPY --from=build /out/identity-service /app/identity-service
 COPY migrations/ /app/migrations/
 
-ENV GIN_MODE=release PORT=8080
+ENV GIN_MODE=release PORT=8080 GRPC_PORT=9090
 USER identity:identity
-EXPOSE 8080
+EXPOSE 8080 9090
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
     CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/health" || exit 1
 ENTRYPOINT ["/app/identity-service"]

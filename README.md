@@ -95,6 +95,49 @@ Invoke-RestMethod "$base/me" -Headers $headers
 Invoke-RestMethod "$base/logout" -Method Post -Headers $headers
 ```
 
+## gRPC API
+
+The same service also serves gRPC (plaintext, no TLS) on `GRPC_PORT` (default `9090`),
+defined in `proto/identity/v1/identity.proto`. It uses the same database and tokens
+as the HTTP API, so tokens from one work with the other.
+
+| RPC | HTTP equivalent |
+| --- | --- |
+| `identity.v1.IdentityService/Register` | `POST /register` |
+| `identity.v1.IdentityService/Login` | `POST /login` |
+| `identity.v1.IdentityService/RefreshToken` | `POST /refresh-token` |
+| `identity.v1.IdentityService/GetMe` | `GET /me` |
+| `identity.v1.IdentityService/Logout` | `POST /logout` |
+| `identity.v1.IdentityInternalService/ValidateAccessToken` | none; for other backend services |
+
+`GetMe` and `Logout` read `authorization: Bearer <access_token>` from request metadata.
+Errors use gRPC status codes: `INVALID_ARGUMENT` (400), `UNAUTHENTICATED` (401),
+`ALREADY_EXISTS` (409), `INTERNAL` (500), with the same messages as HTTP.
+The standard `grpc.health.v1.Health` service is registered. Server reflection is
+enabled only when `APP_ENV` is `local`, `dev`, or `sit`.
+
+Example with [grpcurl](https://github.com/fullstorydev/grpcurl) (from Docker, use
+`host.docker.internal:9090` with the `fullstorydev/grpcurl` image):
+
+```sh
+grpcurl -plaintext localhost:9090 list
+grpcurl -plaintext -d '{"email":"demo@example.com","password":"Example-password-42"}' \
+  localhost:9090 identity.v1.IdentityService/Login
+grpcurl -plaintext -H "authorization: Bearer <access_token>" \
+  localhost:9090 identity.v1.IdentityService/GetMe
+```
+
+Generated Go code lives in `gen/identity/v1` and is committed, so builds do not need
+`protoc`. After editing the `.proto`, regenerate with:
+
+```sh
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+protoc -I proto --go_out=. --go_opt=module=identityService \
+  --go-grpc_out=. --go-grpc_opt=module=identityService \
+  proto/identity/v1/identity.proto
+```
+
 ## Verification
 
 ```powershell
