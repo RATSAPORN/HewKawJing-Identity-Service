@@ -6,10 +6,12 @@ services:
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:${PORT:-8080}:8080"
+      - "127.0.0.1:${GRPC_PORT:-9090}:9090"
     environment:
       APP_ENV: local
       GIN_MODE: release
       PORT: "8080"
+      GRPC_PORT: "9090"
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USER: ${DB_USER:-postgres}

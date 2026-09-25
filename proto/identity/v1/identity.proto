@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package identity.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "identityService/gen/identity/v1;identityv1";
+
+// IdentityService exposes the same flows as the HTTP API under /api/v1/identity.
+//
+// Authentication: GetMe and Logout read the access token from request metadata
+// as `authorization: Bearer <access_token>`, matching the HTTP Authorization header.
+//
+// Errors are returned as gRPC status codes instead of the HTTP {code, message} envelope:
+//   INVALID_ARGUMENT  - HTTP 400 (malformed input, validation failure)
+//   UNAUTHENTICATED   - HTTP 401 (bad credentials, missing/expired/revoked token,
+//                       disabled or deleted account)
+//   ALREADY_EXISTS    - HTTP 409 (email already registered)
+//   INTERNAL          - HTTP 500
+// Status messages reuse the existing HTTP messages (e.g. "invalid email or password").
+service IdentityService {
+  // POST /register. Creates an account; does not issue tokens.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // POST /login. Starts a new session and issues an access/refresh token pair.
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // POST /refresh-token. Rotates both tokens; the old pair becomes invalid.
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+
+  // GET /me. Requires `authorization` metadata.
+  rpc GetMe(GetMeRequest) returns (GetMeResponse);
+
+  // POST /logout. Revokes the current session only. Requires `authorization` metadata.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+// IdentityInternalService is for other backend services, not end-user clients.
+// It should be reachable only on the internal network (separate listener or
+// gateway rule) because it accepts arbitrary user tokens in the request body.
+service IdentityInternalService {
+  // Resolves a user's access token to the user it belongs to. Returns
+  // UNAUTHENTICATED when the token is unknown, expired, revoked, or belongs to
+  // an account that is not active - the same rules as GetMe.
+  rpc ValidateAccessToken(ValidateAccessTokenRequest) returns (ValidateAccessTokenResponse);
+}
+
+// ---------- Shared types ----------
+
+message User {
+  string user_id = 1; // UUID
+  string display_name = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message TokenPair {
+  // Opaque random tokens, not JWTs.
+  string access_token = 1;
+  string refresh_token = 2;
+  string token_type = 3; // always "Bearer"
+  int64 expires_in = 4;  // access token lifetime in seconds (3600)
+}
+
+// ---------- IdentityService ----------
+
+message RegisterRequest {
+  string display_name = 1; // 1-255 characters
+  string email = 2;        // trimmed and lowercased by the server
+  string password = 3;     // at least 8 characters, at most 72 UTF-8 bytes
+}
+
+message RegisterResponse {
+  User user = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  User user = 1;
+  TokenPair tokens = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  User user = 1;
+  TokenPair tokens = 2;
+}
+
+message GetMeRequest {}
+
+message GetMeResponse {
+  User user = 1;
+}
+
+message LogoutRequest {}
+
+message LogoutResponse {}
+
+// ---------- IdentityInternalService ----------
+
+message ValidateAccessTokenRequest {
+  string access_token = 1;
+}
+
+message ValidateAccessTokenResponse {
+  User user = 1;
+}
